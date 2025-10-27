@@ -1,22 +1,39 @@
 import os
+
+from dotenv import load_dotenv
+load_dotenv()
 import socket
 import qrcode
-from flask import Flask, jsonify, request, render_template_string
+# CORRECTED: render_template, redirect, url_for are imported
+from flask import Flask, jsonify, request, render_template_string, render_template, redirect, url_for, send_file
 from flask_cors import CORS
 from flask_login import LoginManager, login_user, logout_user, login_required, current_user
 from werkzeug.utils import secure_filename
 from datetime import datetime, timezone
-from twilio.rest import Client   # ✅ Twilio
+from twilio.rest import Client # ✅ Twilio
+from twilio.base.exceptions import TwilioRestException # 🚨 NEW IMPORT FOR TWILIO ERRORS
 from extensions import db
 from models import User, Patient, EmergencyContact, Report
+from datetime import datetime, timezone, timedelta
+from datetime import datetime, timezone
+from zoneinfo import ZoneInfo
+
+
+# In-memory dictionary to track alert times
+
 
 # ---------------- Setup ----------------
 app = Flask(__name__)
-CORS(app)
+app.secret_key = os.getenv("SECRET_KEY", "supersecretkey")
 
-app.config['SQLALCHEMY_DATABASE_URI'] = 'sqlite:///carecode.db'
-app.config['SQLALCHEMY_TRACK_MODIFICATIONS'] = False
-app.config['SECRET_KEY'] = 'supersecretkey'
+# ✅ Persistent DB path (for Render disk)
+db_path = "/opt/data/carecode.db" if os.path.exists("/opt/data") else "carecode.db"
+app.config["SQLALCHEMY_DATABASE_URI"] = f"sqlite:///{db_path}"
+app.config["SQLALCHEMY_TRACK_MODIFICATIONS"] = False
+
+# Removed: MAIL_SERVER, MAIL_PORT, MAIL_USE_TLS, MAIL_USERNAME, MAIL_PASSWORD, MAIL_DEFAULT_SENDER configurations
+
+# Removed: mail = Mail(app) initialization
 
 # folders for uploads
 BASE_STATIC = os.path.join(os.path.dirname(__file__), "static")
@@ -36,9 +53,40 @@ login_manager.login_view = "login"
 def load_user(user_id):
     return User.query.get(int(user_id))
 
+
 # ---------------- Utils ----------------
+
+# 🚨 CORRECTED FUNCTION: VALIDATE PHONE NUMBER (Removed duplicated logic)
+def validate_phone_number(phone_string):
+    """
+    Uses Twilio Lookup to validate and standardize a phone number.
+    Returns (is_valid: bool, standardized_phone: str or error_message: str)
+    """
+    try:
+        # CORRECTED LINE: Removed invalid 'fields' parameter for v2 Lookup API fetch call.
+        lookup = client.lookups.v2.phone_numbers(phone_string).fetch()
+
+        # Check if Twilio returned a valid E.164 format
+        if lookup.phone_number:
+            return True, lookup.phone_number
+        else:
+            return False, "Invalid phone number format."
+
+    except TwilioRestException as e:
+        # Twilio throws a 404 error (code 20404) if the number is invalid
+        if e.status == 404:
+            return False, "Phone number is invalid or not a working number."
+        else:
+            # Handle other Twilio errors (e.g., authentication, network)
+            print(f"Twilio Lookup Error: {e}")
+            return False, "Validation service error. Try again later."
+    except Exception as e:
+        print(f"General Validation Error: {e}")
+        return False, "An unexpected error occurred during validation."
+
 def contact_dict(c):
-    return {"name": c.name, "phone": c.phone, "relation": c.relation}
+    # Added ID to contact dict for deletion purposes
+    return {"id": c.id, "name": c.name, "phone": c.phone, "relation": c.relation}
 
 def report_dict(r):
     return {
@@ -67,12 +115,16 @@ def patient_staff_dict(p):
     return data
 
 # ---------------- Twilio SMS Sender ----------------
+from twilio.rest import Client
 
+TWILIO_ACCOUNT_SID = os.getenv("TWILIO_ACCOUNT_SID")
+TWILIO_AUTH_TOKEN = os.getenv("TWILIO_AUTH_TOKEN")
+TWILIO_PHONE_NUMBER = os.getenv("TWILIO_PHONE_NUMBER")
 
-TWILIO_ACCOUNT_SID = os.environ.get("TWILIO_ACCOUNT_SID")
-TWILIO_AUTH_TOKEN = os.environ.get("TWILIO_AUTH_TOKEN")
-TWILIO_PHONE = "+12298003359"   # your Twilio trial number
-client = Client(TWILIO_SID, TWILIO_AUTH)
+twilio_client = None
+if TWILIO_ACCOUNT_SID and TWILIO_AUTH_TOKEN:
+    twilio_client = Client(TWILIO_ACCOUNT_SID, TWILIO_AUTH_TOKEN)
+
 
 def send_sms(to_number, message):
     try:
@@ -86,9 +138,6 @@ def send_sms(to_number, message):
         print(f"❌ SMS failed: {e}")
 
 # ---------------- Routes ----------------
-@app.route("/")
-def home():
-    return jsonify({"message": "CareCode Backend Running"})
 
 # ---------- AUTH ----------
 @app.route("/auth/register", methods=["POST"])
@@ -120,14 +169,22 @@ def login():
     user = User.query.filter_by(email=data.get("email")).first()
     if user and user.check_password(data.get("password","")):
         login_user(user)
-        return {"message":"logged in", "role": user.role}
+        # Modified to return a redirect URL for the frontend JavaScript
+        if user.role == 'patient':
+            return jsonify({"redirect": url_for('patient_dashboard')})
+        elif user.role == 'staff':
+            return jsonify({"redirect": url_for('staff_dashboard')})
     return {"error":"invalid credentials"}, 401
+
+# Removed: @app.route("/auth/forgot_password", methods=["POST"])
+# Removed: @app.route("/auth/reset_password_page/<int:user_id>", methods=["GET", "POST"])
 
 @app.route("/auth/logout", methods=["POST"])
 @login_required
 def logout():
     logout_user()
-    return {"message":"logged out"}
+    # Modified to return a redirect URL for the frontend JavaScript
+    return jsonify({"message":"logged out", "redirect": url_for('index')})
 
 # ---------- PATIENT (self) ----------
 @app.route("/me", methods=["GET"])
@@ -168,6 +225,48 @@ def upload_my_report():
     db.session.add(r); db.session.commit()
     return {"message":"uploaded", "report": report_dict(r)}
 
+## NEW FEATURE: Download Patient Report
+@app.route("/me/reports/<int:report_id>/download", methods=["GET"])
+@login_required
+def download_my_report(report_id):
+    if current_user.role != "patient":
+        return {"error":"only patients allowed"}, 403
+    
+    report = Report.query.filter_by(id=report_id, patient_uuid=current_user.patient.uuid).first()
+    if not report:
+        return {"error": "Report not found"}, 404
+
+    # The filename path is relative to the static folder, we need the absolute path
+    # The filename in DB is stored as: 'static/reports/<uuid>/<filename>'
+    file_path = os.path.join(app.root_path, report.filename) 
+    
+    if not os.path.exists(file_path):
+        return {"error": "File not found on server"}, 404
+
+    return send_file(file_path, as_attachment=True, download_name=os.path.basename(file_path))
+
+## NEW FEATURE: Delete Patient Report
+@app.route("/me/reports/<int:report_id>", methods=["DELETE"])
+@login_required
+def delete_my_report(report_id):
+    if current_user.role != "patient":
+        return {"error":"only patients allowed"}, 403
+
+    report = Report.query.filter_by(id=report_id, patient_uuid=current_user.patient.uuid).first()
+    if not report:
+        return {"error": "Report not found"}, 404
+
+    # 1. Delete the file from the filesystem
+    file_path = os.path.join(app.root_path, report.filename)
+    if os.path.exists(file_path):
+        os.remove(file_path)
+
+    # 2. Delete the record from the database
+    db.session.delete(report)
+    db.session.commit()
+    
+    return {"message": f"Report {report_id} deleted successfully"}, 200
+
 @app.route("/me/reports", methods=["GET"])
 @login_required
 def list_my_reports():
@@ -177,6 +276,8 @@ def list_my_reports():
     reps = Report.query.filter_by(patient_uuid=p.uuid).all()
     return {"reports": [report_dict(r) for r in reps]}
 
+# ---------- PATIENT EMERGENCY CONTACTS ----------
+# In app.py
 # ---------- PATIENT EMERGENCY CONTACTS ----------
 @app.route("/me/contacts", methods=["POST"])
 @login_required
@@ -188,23 +289,120 @@ def add_contact():
     if not data.get("name") or not data.get("phone"):
         return {"error": "name and phone required"}, 400
 
+    # 🚨 STEP 1: VALIDATE NUMBER VIA TWILIO LOOKUP
+    is_valid, standardized_phone = validate_phone_number(data["phone"])
+
+    if not is_valid:
+        return {"error": standardized_phone}, 400 # Return the error message
+
+    # 🚨 STEP 2: Use the standardized number if validation passed
     c = EmergencyContact(
         patient_uuid=current_user.patient.uuid,
         name=data["name"],
-        phone=data["phone"],
+        phone=standardized_phone, # Use the standardized E.164 number
         relation=data.get("relation", "")
     )
     db.session.add(c)
     db.session.commit()
     return {"message": "contact added", "contact": contact_dict(c)}
 
-@app.route("/me/contacts", methods=["GET"])
+## NEW FEATURE: Delete Emergency Contact
+@app.route("/me/contacts/<int:contact_id>", methods=["DELETE"])
 @login_required
-def list_contacts():
+def delete_contact(contact_id):
     if current_user.role != "patient":
         return {"error": "only patients allowed"}, 403
-    contacts = EmergencyContact.query.filter_by(patient_uuid=current_user.patient.uuid).all()
-    return {"contacts": [contact_dict(c) for c in contacts]}
+
+    # Ensure the contact belongs to the current patient
+    contact = EmergencyContact.query.filter_by(
+        id=contact_id, 
+        patient_uuid=current_user.patient.uuid
+    ).first()
+
+    if not contact:
+        return {"error": "Contact not found or does not belong to patient"}, 404
+
+    db.session.delete(contact)
+    db.session.commit()
+    
+    return {"message": f"Contact {contact_id} deleted successfully"}, 200
+# ------------------ TWILIO VERIFY SETUP ------------------
+# ⚠️ Create a Verify Service in Twilio Console and paste its SID below
+TWILIO_VERIFY_SID = os.getenv("TWILIO_VERIFY_SID")  # from Render env vars
+
+
+# ------------------ NEW: Send OTP to Contact ------------------
+@app.route("/me/contacts/send_otp", methods=["POST"])
+@login_required
+def send_contact_otp():
+    if current_user.role != "patient":
+        return {"error": "only patients allowed"}, 403
+
+    data = request.get_json() or {}
+    name = data.get("name")
+    phone = data.get("phone")
+    relation = data.get("relation", "")
+
+    if not name or not phone:
+        return {"error": "name and phone required"}, 400
+
+    # Validate format
+    is_valid, standardized_phone = validate_phone_number(phone)
+    if not is_valid:
+        return {"error": standardized_phone}, 400
+
+    try:
+        # Send OTP via Twilio Verify
+        verification = client.verify.v2.services(TWILIO_VERIFY_SID).verifications.create(
+            to=standardized_phone,
+            channel="sms"
+        )
+        return {"message": f"OTP sent to {standardized_phone}", "phone": standardized_phone}, 200
+    except Exception as e:
+        print(f"OTP send failed: {e}")
+        return {"error": "Failed to send OTP. Please try again."}, 500
+
+
+# ------------------ NEW: Verify OTP and Save Contact ------------------
+@app.route("/me/contacts/verify_otp", methods=["POST"])
+@login_required
+def verify_contact_otp():
+    if current_user.role != "patient":
+        return {"error": "only patients allowed"}, 403
+
+    data = request.get_json() or {}
+    name = data.get("name")
+    relation = data.get("relation", "")
+    phone = data.get("phone")
+    otp = data.get("otp")
+
+    if not (name and phone and otp):
+        return {"error": "name, phone, and otp required"}, 400
+
+    try:
+        verification_check = client.verify.v2.services(TWILIO_VERIFY_SID).verification_checks.create(
+            to=phone,
+            code=otp
+        )
+
+        if verification_check.status == "approved":
+            # Save the verified contact
+            c = EmergencyContact(
+                patient_uuid=current_user.patient.uuid,
+                name=name,
+                phone=phone,
+                relation=relation
+            )
+            db.session.add(c)
+            db.session.commit()
+            return {"message": "Contact verified and added successfully", "contact": contact_dict(c)}, 201
+        else:
+            return {"error": "Invalid OTP"}, 400
+
+    except Exception as e:
+        print(f"OTP verification failed: {e}")
+        return {"error": "Verification failed. Try again later."}, 500
+
 
 # ---------- STAFF ----------
 @app.route("/staff/patients", methods=["GET"])
@@ -266,6 +464,10 @@ def staff_search():
     return {"patients": [patient_staff_dict(p) for p in results]}
 
 # ---------- PUBLIC ----------
+# ✅ Prevent duplicate alerts within 2 hours
+last_alert_time = {}
+# app.py - Corrected /patient/<string:uuid> route
+
 @app.route("/patient/<string:uuid>", methods=["GET"])
 def public_patient(uuid):
     p = Patient.query.filter_by(uuid=uuid).first()
@@ -277,10 +479,12 @@ def public_patient(uuid):
         [f"<li>{c.name} ({c.relation}) - {c.phone}</li>" for c in contacts]
     )
 
+    # Note: The HTML must be a single string for render_template_string
     html = f"""
     <html>
     <head>
-        <title>Patient Info</title>
+        <title>Patient Info - {p.name}</title>
+        <meta name="viewport" content="width=device-width, initial-scale=1.0">
         <style>
             body {{
                 font-family: Arial, sans-serif;
@@ -289,104 +493,125 @@ def public_patient(uuid):
                 color: #333;
             }}
             .card {{
-                max-width: 500px;
+                max-width: 520px;
                 margin: auto;
                 background: white;
                 padding: 20px;
                 border-radius: 12px;
                 box-shadow: 0px 0px 10px rgba(0,0,0,0.1);
             }}
-            h2 {{
-                color: #2c3e50;
-                text-align: center;
-            }}
-            p {{
-                margin: 5px 0;
-            }}
-            ul {{
-                padding-left: 20px;
+            h2 {{ color: #2c3e50; text-align: center; }}
+            p {{ margin: 5px 0; }}
+            ul {{ padding-left: 20px; }}
+            .alert-text {{ 
+                text-align:center;
+                color:#c0392b; 
+                font-weight:bold;
+                margin-top:15px; 
+                border-top: 1px solid #eee;
+                padding-top: 10px;
             }}
         </style>
     </head>
     <body>
         <div class="card">
-            <h2>Patient: {p.name}</h2>
+            <h2>🚨 Emergency Alert: {p.name}</h2>
             <p><strong>Age:</strong> {p.age}</p>
             <p><strong>Blood Group:</strong> {p.blood_group}</p>
-            <p><strong>Allergies:</strong> {p.allergies if p.allergies else "None"}</p>
-            <p><strong>Medications:</strong> {p.medications if p.medications else "None"}</p>
+            <p><strong>Allergies:</strong> {p.allergies or "None"}</p>
+            <p><strong>Medications:</strong> {p.medications or "None"}</p>
             <h3>Emergency Contacts:</h3>
-            <ul>
-                {contact_html if contact_html else "<li>No emergency contacts available</li>"}
-            </ul>
+            <ul>{contact_html or "<li>No emergency contacts available</li>"}</ul>
+            <p class="alert-text">
+                📍 Attempting to send alert SMS to contacts...
+            </p>
         </div>
 
         <script>
-        // 📍 Try to get live location
-        if (navigator.geolocation) {{
-            navigator.geolocation.getCurrentPosition(
-                (pos) => {{
-                    fetch('/report_location/{uuid}/live', {{
-                        method: 'POST',
-                        headers: {{'Content-Type': 'application/json'}},
-                        body: JSON.stringify({{
-                            latitude: pos.coords.latitude,
-                            longitude: pos.coords.longitude
-                        }})
-                    }});
-                }},
-                (err) => {{
-                    console.error("Location permission denied:", err);
-                    fetch('/report_location/{uuid}', {{method: 'POST'}});
-                }}
-            );
-        }} else {{
-            fetch('/report_location/{uuid}', {{method: 'POST'}});
+const uuid = "{uuid}";
+console.log("QR page opened for:", uuid);
+
+// Check if Geolocation is supported
+if (navigator.geolocation) {{
+    // This call triggers the 'Allow Location' pop-up
+    navigator.geolocation.getCurrentPosition(
+        // Success: Location access granted
+        (pos) => {{
+            console.log("✅ Location access granted");
+            fetch(`/report_location/${{uuid}}`, {{
+                method: 'POST',
+                headers: {{'Content-Type': 'application/json'}},
+                // Send lat/lon in the request body
+                body: JSON.stringify({{
+                    latitude: pos.coords.latitude,
+                    longitude: pos.coords.longitude
+                }})
+            }})
+            .then(r => console.log("✅ Alert sent WITH location", r.status));
+            document.querySelector('.alert-text').textContent = '✅ Emergency alert sent with your current location!';
+        }},
+        // Error: Location access denied or failed
+        (err) => {{
+            console.warn("⚠️ Location denied or failed:", err);
+            // Send alert WITHOUT location data
+            fetch(`/report_location/${{uuid}}`, {{
+                method: 'POST',
+                // No body needed for the locationless alert
+            }})
+            .then(r => console.log("✅ Alert sent WITHOUT location", r.status));
+            document.querySelector('.alert-text').textContent = '⚠️ Location denied. Emergency alert sent without live location.';
         }}
+    );
+}} else {{
+    console.log("Geolocation not supported by this browser.");
+    document.querySelector('.alert-text').textContent = '⚠️ Geolocation not supported. Alert sent without live location.';
+    // Fallback: Send alert even if geolocation is not supported
+    fetch(`/report_location/${{uuid}}`, {{ method: 'POST' }})
+        .then(r => console.log("✅ Alert sent (geolocation not supported)", r.status));
+}}
         </script>
     </body>
     </html>
     """
     return render_template_string(html)
 
+
+from datetime import datetime, timezone, timedelta
+
 @app.route("/report_location/<string:uuid>", methods=["POST"])
 def report_location(uuid):
     p = Patient.query.filter_by(uuid=uuid).first()
     if not p:
-        return {"error":"patient not found"}, 404
+        return {"error": "patient not found"}, 404
 
-    contacts = EmergencyContact.query.filter_by(patient_uuid=p.uuid).all()
-    if contacts:
-        scan_time = datetime.now(timezone.utc).strftime("%Y-%m-%d %H:%M:%S UTC")
-        alert_msg = f"🚨 QR for {p.name} was scanned at {scan_time}."
-        for c in contacts:
-            send_sms(c.phone, alert_msg)
+    # ✅ Always use Indian time (no tzdata needed)
+    now_ist = datetime.now(timezone.utc) + timedelta(hours=5, minutes=30)
+    scan_time = now_ist.strftime("%Y-%m-%d %I:%M:%S %p IST")
 
-    return {"status": "ok"}
+    # ✅ Get location (if available)
+    data = request.get_json(silent=True) or {}
+    lat, lon = data.get("latitude"), data.get("longitude")
 
-# ✅ ---------- LIVE LOCATION ROUTE ----------
-@app.route("/report_location/<string:uuid>/live", methods=["POST"])
-def report_live_location(uuid):
-    p = Patient.query.filter_by(uuid=uuid).first()
-    if not p:
-        return {"error":"patient not found"}, 404
-
-    data = request.get_json() or {}
-    lat = data.get("latitude")
-    lon = data.get("longitude")
-
-    if not lat or not lon:
-        return {"error":"latitude and longitude required"}, 400
-
-    contacts = EmergencyContact.query.filter_by(patient_uuid=p.uuid).all()
-    if contacts:
+    if lat and lon:
         location_link = f"https://www.google.com/maps?q={lat},{lon}"
-        scan_time = datetime.now(timezone.utc).strftime("%Y-%m-%d %H:%M:%S UTC")
-        alert_msg = f"🚨 QR for {p.name} scanned at {scan_time}\n📍 Location: {location_link}"
-        for c in contacts:
-            send_sms(c.phone, alert_msg)
+        alert_msg = (
+            f"🚨 QR for {p.name} scanned at {scan_time}\n"
+            f"📍 Live Location: {location_link}"
+        )
+    else:
+        alert_msg = f"🚨 QR for {p.name} scanned at {scan_time}\n📍 Location not shared."
 
-    return {"status": "ok", "message": "Live location sent to contacts"}
+    # ✅ Send SMS to all emergency contacts every scan (no limit)
+    contacts = EmergencyContact.query.filter_by(patient_uuid=p.uuid).all()
+    if not contacts:
+        print("⚠️ No emergency contacts found for this patient.")
+    for c in contacts:
+        send_sms(c.phone, alert_msg)
+
+    print(f"✅ Alert sent for {p.name} at {scan_time}")
+    return {"status": "ok", "message": "Alert sent successfully"}
+
+
 
 @app.route("/generate_qr/<string:uuid>", methods=["GET"])
 def generate_qr(uuid):
@@ -396,7 +621,11 @@ def generate_qr(uuid):
 
     hostname = socket.gethostname()
     local_ip = socket.gethostbyname(hostname)
-    url = f"http://{local_ip}:5000/patient/{uuid}"
+    qr_url = f"{BASE_URL}/patient/{uuid}"
+
+
+
+
 
     out = os.path.join(QRC_DIR, f"{uuid}.png")
     qrcode.make(url).save(out)
@@ -404,8 +633,49 @@ def generate_qr(uuid):
     rel = os.path.join("static","qrcodes", f"{uuid}.png").replace("\\","/")
     return {"qr": rel, "opens": url}
 
+## NEW FEATURE: Download QR Code Image
+@app.route("/generate_qr/<string:uuid>/download", methods=["GET"])
+def download_qr(uuid):
+    p = Patient.query.filter_by(uuid=uuid).first()
+    if not p:
+        return {"error":"not found"}, 404
+
+    file_path = os.path.join(QRC_DIR, f"{uuid}.png")
+    if not os.path.exists(file_path):
+        # Regenerate if not found
+        result = generate_qr(uuid)
+        if "error" in result:
+             return result, 404
+        # Wait for the file to be saved, then proceed
+        
+    return send_file(file_path, as_attachment=True, download_name=f"carecode_qr_{uuid}.png")
+
+
+# ---------------- NEW FRONTEND ROUTES ----------------
+
+@app.route("/")
+def index():
+    # Renders the main index page (index.html)
+    return render_template("index.html")
+
+@app.route("/patient/dashboard")
+@login_required
+def patient_dashboard():
+    if current_user.role != "patient":
+        return redirect(url_for('staff_dashboard')) # Redirect if logged in as staff
+    # NOTE: Using your file name 'patient.html'
+    return render_template("patient.html") 
+
+@app.route("/staff/dashboard")
+@login_required
+def staff_dashboard():
+    if current_user.role != "staff":
+        return redirect(url_for('patient_dashboard')) # Redirect if logged in as patient
+    # NOTE: Using your file name 'staff.html'
+    return render_template("staff.html")
+
 # ---------------- Init ----------------
 if __name__ == "__main__":
     with app.app_context():
         db.create_all()
-    app.run(host="0.0.0.0", port=5000, debug=True)
+    app.run(host="0.0.0.0", port=5000)
