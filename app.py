@@ -1,5 +1,8 @@
 import os
 
+BASE_URL = os.getenv("BASE_URL", "https://carecode.onrender.com")
+
+
 from dotenv import load_dotenv
 load_dotenv()
 import socket
@@ -17,6 +20,10 @@ from models import User, Patient, EmergencyContact, Report
 from datetime import datetime, timezone, timedelta
 from datetime import datetime, timezone
 from zoneinfo import ZoneInfo
+import logging
+logging.basicConfig(level=logging.INFO)
+
+
 
 
 # In-memory dictionary to track alert times
@@ -64,7 +71,7 @@ def validate_phone_number(phone_string):
     """
     try:
         # CORRECTED LINE: Removed invalid 'fields' parameter for v2 Lookup API fetch call.
-        lookup = client.lookups.v2.phone_numbers(phone_string).fetch()
+        lookup = twilio_client.lookups.v2.phone_numbers(phone_string).fetch()
 
         # Check if Twilio returned a valid E.164 format
         if lookup.phone_number:
@@ -128,14 +135,15 @@ if TWILIO_ACCOUNT_SID and TWILIO_AUTH_TOKEN:
 
 def send_sms(to_number, message):
     try:
-        msg = client.messages.create(
+        msg = twilio_client.messages.create(
             body=message,
-            from_=TWILIO_PHONE,
+            from_=TWILIO_PHONE_NUMBER,
             to=to_number
         )
         print(f"✅ SMS sent to {to_number}, SID={msg.sid}")
     except Exception as e:
         print(f"❌ SMS failed: {e}")
+
 
 # ---------------- Routes ----------------
 
@@ -353,10 +361,13 @@ def send_contact_otp():
 
     try:
         # Send OTP via Twilio Verify
-        verification = client.verify.v2.services(TWILIO_VERIFY_SID).verifications.create(
-            to=standardized_phone,
-            channel="sms"
+        verification = twilio_client.verify.v2.services(TWILIO_VERIFY_SID).verifications.create(
+    to=standardized_phone,
+    channel="sms"
+
         )
+
+        
         return {"message": f"OTP sent to {standardized_phone}", "phone": standardized_phone}, 200
     except Exception as e:
         print(f"OTP send failed: {e}")
@@ -380,10 +391,10 @@ def verify_contact_otp():
         return {"error": "name, phone, and otp required"}, 400
 
     try:
-        verification_check = client.verify.v2.services(TWILIO_VERIFY_SID).verification_checks.create(
-            to=phone,
-            code=otp
-        )
+        verification_check = twilio_client.verify.v2.services(TWILIO_VERIFY_SID).verification_checks.create(
+    to=phone,
+    code=otp
+    )
 
         if verification_check.status == "approved":
             # Save the verified contact
@@ -623,15 +634,15 @@ def generate_qr(uuid):
     local_ip = socket.gethostbyname(hostname)
     qr_url = f"{BASE_URL}/patient/{uuid}"
 
-
-
-
-
     out = os.path.join(QRC_DIR, f"{uuid}.png")
-    qrcode.make(url).save(out)
+    qrcode.make(qr_url).save(out)
 
-    rel = os.path.join("static","qrcodes", f"{uuid}.png").replace("\\","/")
-    return {"qr": rel, "opens": url}
+    rel = os.path.join("static", "qrcodes", f"{uuid}.png").replace("\\", "/")
+    return {"qr": rel, "opens": qr_url}
+
+    
+
+
 
 ## NEW FEATURE: Download QR Code Image
 @app.route("/generate_qr/<string:uuid>/download", methods=["GET"])
@@ -678,4 +689,4 @@ def staff_dashboard():
 if __name__ == "__main__":
     with app.app_context():
         db.create_all()
-    app.run(host="0.0.0.0", port=5000)
+    app.run(host="0.0.0.0", port=int(os.environ.get("PORT", 5000)))
