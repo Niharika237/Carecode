@@ -801,17 +801,18 @@ def report_location(uuid):
 def generate_qr(uuid):
     p = Patient.query.filter_by(uuid=uuid).first()
     if not p:
-        return {"error":"not found"}, 404
+        return {"error": "not found"}, 404
 
-    hostname = socket.gethostname()
-    local_ip = socket.gethostbyname(hostname)
-    url = f"http://{local_ip}:5000/patient/{uuid}"
+    # ✅ Use your Render domain instead of local IP
+    base_url = "https://carecode-1.onrender.com"
+    url = f"{base_url}/patient/{uuid}"
 
     out = os.path.join(QRC_DIR, f"{uuid}.png")
     qrcode.make(url).save(out)
 
-    rel = os.path.join("static","qrcodes", f"{uuid}.png").replace("\\","/")
+    rel = os.path.join("static", "qrcodes", f"{uuid}.png").replace("\\", "/")
     return {"qr": rel, "opens": url}
+
 
 ## NEW FEATURE: Download QR Code Image
 @app.route("/generate_qr/<string:uuid>/download", methods=["GET"])
