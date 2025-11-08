@@ -1,0 +1,526 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Patient Dashboard - CareCode</title>
+   <style>
+    /* Global and Layout */
+    body {
+        font-family: 'Inter', 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+        background-color: #f4f6f9; /* Off-white, soft background */
+        padding: 30px;
+        color: #333; 
+        margin: 0;
+    }
+    
+    /* Header and Logout */
+    .header {
+        display: flex;
+        justify-content: space-between;
+        align-items: center;
+        margin-bottom: 30px;
+        padding-bottom: 15px;
+        border-bottom: 1px solid #dee2e6;
+    }
+    .header h1 {
+        color: #004d99; /* Deep Professional Blue */
+        font-size: 2.2em;
+        font-weight: 700;
+    }
+    .logout-btn {
+        padding: 10px 20px;
+        background-color: #5a6268; /* Dark Muted Gray */
+        color: white;
+        border: none;
+        border-radius: 6px;
+        cursor: pointer;
+        font-weight: 600;
+        transition: background-color 0.2s;
+    }
+    .logout-btn:hover {
+        background-color: #495057;
+    }
+    
+    /* Dashboard Grid/Container */
+    .dashboard-container {
+        display: grid;
+        grid-template-columns: 2fr 1fr;
+        gap: 30px;
+        align-items: flex-start;
+    }
+    
+    /* Card Styling */
+    .card {
+        background: white;
+        padding: 30px;
+        border-radius: 10px;
+        box-shadow: 0 4px 12px rgba(0, 0, 0, 0.08); /* Clean shadow */
+        border: 1px solid #e9ecef;
+    }
+
+    /* Headings within Cards */
+    h3 {
+        color: #212529;
+        font-size: 1.4em;
+        font-weight: 600;
+        border-bottom: 3px solid #ced4da; /* Soft gray separator */
+        padding-bottom: 8px;
+        margin-bottom: 25px;
+    }
+    h4 {
+        color: #004d99;
+        font-size: 1.1em;
+        margin-top: 25px;
+        margin-bottom: 10px;
+    }
+
+    /* Form and Input Styling */
+    .details-form label, .contact-form label { 
+        display: block; 
+        margin-top: 10px; 
+        margin-bottom: 3px;
+        font-weight: 600; 
+        color: #495057; 
+        font-size: 0.95em;
+    }
+    .details-form input, 
+    .details-form textarea, 
+    .contact-form input, 
+    #upload-report-form input[type="text"],
+    #upload-report-form input[type="file"] { 
+        width: 100%; 
+        padding: 10px 12px; 
+        margin-top: 5px; 
+        border: 1px solid #ced4da; 
+        border-radius: 4px; 
+        box-sizing: border-box; 
+        font-size: 1em;
+    }
+    .details-form textarea {
+        min-height: 80px;
+    }
+    .details-form input:focus, .details-form textarea:focus, .contact-form input:focus {
+        border-color: #004d99;
+        box-shadow: 0 0 5px rgba(0, 77, 153, 0.2);
+        outline: none;
+    }
+
+    /* Action Buttons (General) */
+    .btn-action, .btn-primary, .btn-upload { 
+        padding: 10px 18px; 
+        border: none; 
+        border-radius: 6px; 
+        cursor: pointer; 
+        margin-top: 10px; 
+        margin-right: 8px; 
+        font-weight: 600;
+        font-size: 1em;
+        transition: opacity 0.2s, background-color 0.2s;
+    }
+    .btn-action:hover, .btn-primary:hover, .btn-upload:hover {
+        opacity: 0.9;
+    }
+    
+    /* 🚨 PRIMARY BUTTON (Update Details, Generate QR, View QR) - PROFESSIONAL PURPLE */
+    .btn-primary, .qr-area .btn-primary { 
+        background-color: #800080; /* Professional Purple/Plum */
+        color: white; 
+        width: auto; /* Required for Update Details and QR buttons */
+    }
+    
+    /* 🚨 UPLOAD BUTTON STYLE - ALSO PROFESSIONAL PURPLE */
+    .btn-upload {
+        background-color: #800080; /* Professional Purple/Plum */
+        color: white;
+        width: 100%; 
+        margin-right: 0;
+        margin-top: 15px;
+    }
+
+    /* Download and Delete Buttons (List Items) */
+    .report-item .btn-download,
+    .report-item .btn-delete {
+        padding: 6px 12px; 
+        font-size: 0.9em; 
+        margin-top: 0;
+    }
+
+    /* DELETE Button Color */
+    .btn-delete { 
+        background-color: #dc3545; /* Standard Danger Red */
+        color: white; 
+    }
+    
+    /* DOWNLOAD Button Color */
+    .btn-download { 
+        background-color: #ffc107; /* Standard Warning Yellow/Gold */
+        color: #212529; 
+    }
+    
+    /* VERIFY Button Color (Must remain distinct/green for success) */
+    .btn-verify { 
+        background-color: #28a745; /* Standard Success Green */
+        color: white; 
+    }
+
+    /* Messages */
+    .message { 
+        margin-top: 15px; 
+        font-weight: 600; 
+        padding: 10px;
+        border-radius: 6px;
+        font-size: 0.95em;
+        text-align: center;
+    }
+    .success { 
+        color: #198754; 
+        background-color: #d1e7dd; 
+        border: 1px solid #badbcc;
+    }
+    .error { 
+        color: #dc3545; 
+        background-color: #f8d7da; 
+        border: 1px solid #f5c6cb;
+    }
+    .unverified { 
+        color: #664d03; 
+        background-color: #fff3cd; 
+        border: 1px solid #ffecb5;
+    }
+
+    /* Lists (Contacts and Reports) */
+    .contact-item, .report-item { 
+        display: flex; 
+        justify-content: space-between; 
+        align-items: center; 
+        margin-bottom: 5px; 
+        padding: 10px 0; 
+        border-bottom: 1px dashed #e9ecef;
+        font-size: 0.95em;
+    }
+    .report-item div {
+        display: flex;
+        gap: 8px;
+    }
+    
+    /* QR Code Area */
+    .qr-area { 
+        text-align: center; 
+        padding-bottom: 20px;
+    }
+    .qr-area img { 
+        max-width: 180px; 
+        height: auto;
+        margin-top: 15px; 
+        border: 4px solid #f8f9fa;
+        box-shadow: 0 0 10px rgba(0, 0, 0, 0.1);
+        border-radius: 4px;
+    }
+    .qr-area button {
+        margin: 5px;
+    }
+
+    /* ✅ QR Title and Note Styling */
+    .qr-title {
+        font-size: 2rem;        /* Large text */
+        font-weight: 800;       /* Very bold */
+        color: #800080;         /* Matches your purple theme */
+        margin-top: 10px;
+        text-align: center;
+    }
+
+    .qr-note {
+        font-size: 1rem;        /* Medium text */
+        font-weight: 600;       /* Semi-bold */
+        color: #555;            /* Subtle dark grey */
+        margin-top: 10px;
+        text-align: center;
+    }
+
+    /* Responsive adjustments */
+    @media (max-width: 992px) {
+        .dashboard-container {
+            grid-template-columns: 1fr;
+        }
+        .header {
+            flex-direction: column;
+            align-items: flex-start;
+        }
+    }
+</style>
+
+</head>
+<body>
+    <div class="header">
+        <h1>Patient Dashboard</h1>
+        <button class="logout-btn" onclick="logout()">Logout</button>
+    </div>
+
+    <div class="dashboard-container">
+        <!-- Patient Details -->
+        <div class="card" style="flex: 2;">
+            <h3>Your Details</h3>
+            <form id="patient-details-form" class="details-form">
+                <label for="name">Name:</label>
+                <input type="text" id="name" name="name" required>
+                <label for="age">Age:</label>
+                <input type="number" id="age" name="age" required>
+                <label for="blood_group">Blood Group:</label>
+                <input type="text" id="blood_group" name="blood_group">
+                <label for="allergies">Allergies:</label>
+                <textarea id="allergies" name="allergies"></textarea>
+                <label for="medications">Medications:</label>
+                <textarea id="medications" name="medications"></textarea>
+                <button type="submit" class="btn-primary">Update Details</button>
+            </form>
+            <div id="details-message" class="message"></div>
+
+            <!-- Emergency Contacts -->
+            <h3 style="margin-top: 30px;">Emergency Contacts (Verified Only Get Alerts)</h3>
+            <div id="contacts-list"></div>
+
+            <!-- OTP Verification -->
+            <form id="add-contact-form" class="contact-form">
+                <h4>Add/Verify New Contact</h4>
+                <div id="step-1-details">
+                    <input type="text" id="c_name" placeholder="Contact Name" required>
+                    <input type="text" id="c_phone" placeholder="Phone (+E.164 format: +91...)" required>
+                    <input type="text" id="c_relation" placeholder="Relation (e.g., Mother)" required>
+                    <button type="button" class="btn-primary btn-verify" onclick="startVerification()"> Send Verification Code</button>
+                </div>
+
+                <div id="step-2-otp" style="display:none; margin-top: 15px;">
+                    <p style="font-style: italic;">Enter the 6-digit code sent to the phone number.</p>
+                    <input type="text" id="c_otp" placeholder="Enter OTP Code" required>
+                    <button type="button" class="btn-primary" onclick="checkVerification()">2. Verify Code</button>
+                </div>
+
+                <div id="step-3-save" style="display:none; margin-top: 15px;">
+                    <p class="success">Verification successful! Click Save to finalize contact.</p>
+                    <button type="submit" class="btn-primary">Save Verified Contact</button>
+                </div>
+            </form>
+            <div id="contact-message" class="message"></div>
+        </div>
+
+        <!-- QR Code & Reports -->
+        <!-- QR Code & Reports -->
+<div class="qr-area">
+    <h3>Your Emergency QR Code</h3>
+
+    <!-- ✅ Added Scan2Save text -->
+    <h2 class="qr-title">Scan2Save</h2>
+    <p class="qr-note">In case of emergencies, scan this QR for more details.</p>
+
+    <button class="btn-primary" onclick="generateQR(true)">Generate QR</button>
+    <button class="btn-primary" onclick="viewQR()">View QR</button>
+    <div id="qr-output" style="margin-top: 10px;"></div>
+</div>
+
+    <h3 style="margin-top: 30px;">Medical Reports</h3>
+            <form id="upload-report-form" enctype="multipart/form-data">
+                <input type="file" name="file" required>
+                <input type="text" name="description" placeholder="Report description (e.g., ECG)">
+                <button type="submit" class="btn-primary">Upload Report</button>
+            </form>
+            <div id="report-message" class="message"></div>
+            <div id="reports-list" style="margin-top: 20px;"></div>
+        </div>
+    </div>
+
+    <!-- ========== SCRIPT SECTION ========== -->
+    <script>
+        let patientUUID = '';
+        let verifiedContactData = {};
+
+        const displayMessage = (id, message, type = 'success') => {
+            const el = document.getElementById(id);
+            el.textContent = message;
+            el.className = `message ${type}`;
+        };
+
+        // ---------- PROFILE ----------
+        async function fetchMyProfile() {
+            const response = await fetch('/me');
+            if (response.ok) {
+                const data = await response.json();
+                patientUUID = data.uuid;
+                document.getElementById('name').value = data.name || '';
+                document.getElementById('age').value = data.age || '';
+                document.getElementById('blood_group').value = data.blood_group || '';
+                document.getElementById('allergies').value = data.allergies || '';
+                document.getElementById('medications').value = data.medications || '';
+                listContacts(data.emergency_contacts);
+                listReports(data.reports);
+            } else {
+                if (response.status === 401 || response.status === 403) window.location.href = '/';
+            }
+        }
+
+        async function updateDetails(e) {
+            e.preventDefault();
+            const formData = Object.fromEntries(new FormData(e.target).entries());
+            formData.age = parseInt(formData.age);
+            const res = await fetch('/me', {
+                method: 'PUT',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify(formData)
+            });
+            const result = await res.json();
+            displayMessage('details-message', res.ok ? "Details updated successfully!" : result.error, res.ok ? 'success' : 'error');
+        }
+
+        // ---------- CONTACTS ----------
+        function listContacts(contacts) {
+            const list = document.getElementById('contacts-list');
+            list.innerHTML = '';
+            if (!contacts.length) {
+                list.innerHTML = '<p>No contacts added yet.</p>';
+                return;
+            }
+            contacts.forEach(c => {
+                const item = document.createElement('div');
+                item.className = 'contact-item';
+                item.innerHTML = `
+                    <span>${c.name} (${c.relation}): ${c.phone}</span>
+                    <button class="btn-action btn-delete" onclick="deleteContact(${c.id})">Delete</button>`;
+                list.appendChild(item);
+            });
+        }
+
+        async function deleteContact(id) {
+            if (!confirm("Delete this contact?")) return;
+            const res = await fetch(`/me/contacts/${id}`, { method: 'DELETE' });
+            const result = await res.json();
+            displayMessage('contact-message', result.message || result.error, res.ok ? 'success' : 'error');
+            fetchMyProfile();
+        }
+
+        // ---------- OTP ----------
+        async function startVerification() {
+            const name = document.getElementById('c_name').value.trim();
+            const phone = document.getElementById('c_phone').value.trim();
+            const relation = document.getElementById('c_relation').value.trim();
+            if (!name || !phone || !relation) return displayMessage('contact-message', 'Fill in all fields', 'error');
+
+            verifiedContactData = { name, phone, relation };
+            displayMessage('contact-message', 'Sending OTP...', 'unverified');
+
+            try {
+                const res = await fetch('/me/contacts/send_otp', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ name, phone, relation })
+                });
+                const result = await res.json();
+                if (res.ok) {
+                    displayMessage('contact-message', result.message, 'success');
+                    document.getElementById('step-1-details').style.display = 'none';
+                    document.getElementById('step-2-otp').style.display = 'block';
+                } else displayMessage('contact-message', result.error, 'error');
+            } catch (e) {
+                displayMessage('contact-message', 'Failed to send OTP.', 'error');
+            }
+        }
+
+        async function checkVerification() {
+            const otp = document.getElementById('c_otp').value.trim();
+            if (!otp) return displayMessage('contact-message', 'Enter OTP code.', 'error');
+
+            try {
+                const res = await fetch('/me/contacts/verify_otp', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ ...verifiedContactData, otp })
+                });
+                const result = await res.json();
+                if (res.ok) {
+                    displayMessage('contact-message', 'Verification successful! Contact saved.', 'success');
+                    fetchMyProfile();
+                    document.getElementById('add-contact-form').reset();
+                    document.getElementById('step-1-details').style.display = 'block';
+                    document.getElementById('step-2-otp').style.display = 'none';
+                } else displayMessage('contact-message', result.error, 'error');
+            } catch (e) {
+                displayMessage('contact-message', 'OTP verification failed.', 'error');
+            }
+        }
+
+        // ---------- REPORTS ----------
+        function listReports(reports) {
+            const list = document.getElementById('reports-list');
+            list.innerHTML = reports.length ? '' : '<p>No reports yet.</p>';
+            reports.forEach(r => {
+                const item = document.createElement('div');
+                item.className = 'report-item';
+                item.innerHTML = `
+                    <span><strong>${r.description || r.filename}</strong> (${new Date(r.uploaded_at).toLocaleDateString()})</span>
+                    <div>
+                        <a href="/me/reports/${r.id}/download" target="_blank" class="btn-action btn-download">Download</a>
+                        <button class="btn-action btn-delete" onclick="deleteReport(${r.id})">Delete</button>
+                    </div>`;
+                list.appendChild(item);
+            });
+        }
+
+        async function uploadReport(e) {
+            e.preventDefault();
+            const res = await fetch('/me/reports', { method: 'POST', body: new FormData(e.target) });
+            const result = await res.json();
+            displayMessage('report-message', res.ok ? "Report uploaded!" : result.error, res.ok ? 'success' : 'error');
+            fetchMyProfile();
+        }
+
+        async function deleteReport(id) {
+            if (!confirm("Delete this report?")) return;
+            const res = await fetch(`/me/reports/${id}`, { method: 'DELETE' });
+            const result = await res.json();
+            displayMessage('report-message', result.message || result.error, res.ok ? 'success' : 'error');
+            fetchMyProfile();
+        }
+
+        // ---------- QR ----------
+        async function generateQR(showMessage = true) {
+            if (!patientUUID) return;
+            const res = await fetch(`/generate_qr/${patientUUID}`);
+            const result = await res.json();
+            const qrDiv = document.getElementById('qr-output');
+            if (res.ok) {
+                qrDiv.innerHTML = `<p class="success">QR generated successfully! Click 'View QR' to display it.</p>`;
+            } else qrDiv.innerHTML = `<p class="error">${result.error}</p>`;
+        }
+
+        async function viewQR() {
+            if (!patientUUID) return;
+            const qrDiv = document.getElementById('qr-output');
+            qrDiv.innerHTML = '<p>Loading your QR...</p>';
+            const res = await fetch(`/generate_qr/${patientUUID}`);
+            const result = await res.json();
+            if (res.ok) {
+                qrDiv.innerHTML = `<img src="/${result.qr}" alt="QR Code"><p>Scan this in emergencies.</p><button class="btn-primary btn-download" onclick="downloadQR()">Download QR</button>`;
+            } else qrDiv.innerHTML = `<p class="error">${result.error || "Please generate QR first."}</p>`;
+        }
+
+        function downloadQR() {
+            if (patientUUID) window.open(`/generate_qr/${patientUUID}/download`, '_blank');
+        }
+
+        // ---------- LOGOUT ----------
+        async function logout() {
+            const res = await fetch('/auth/logout', { method: 'POST' });
+            const result = await res.json();
+            window.location.href = result.redirect || '/';
+        }
+
+        // ---------- INITIALIZE ----------
+        document.addEventListener('DOMContentLoaded', async () => {
+            await fetchMyProfile();
+            // ✅ Live location sending is handled only in the QR scan page now.
+        });
+
+        document.getElementById('patient-details-form').addEventListener('submit', updateDetails);
+        document.getElementById('upload-report-form').addEventListener('submit', uploadReport);
+    </script>
+</body>
+</html>

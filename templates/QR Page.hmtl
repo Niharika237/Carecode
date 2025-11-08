@@ -1,0 +1,112 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<title>Carecode - Emergency Details</title>
+<style>
+body {
+    font-family: 'Inter', sans-serif;
+    background-color: #f4f6f9;
+    color: #333;
+    padding: 30px;
+    text-align: center;
+}
+.card {
+    background: white;
+    padding: 25px;
+    border-radius: 10px;
+    box-shadow: 0 4px 12px rgba(0,0,0,0.08);
+    display: inline-block;
+    max-width: 500px;
+}
+input {
+    padding: 10px;
+    width: 80%;
+    border: 1px solid #ccc;
+    border-radius: 6px;
+    margin-top: 10px;
+}
+button {
+    padding: 10px 20px;
+    background-color: #800080;
+    color: white;
+    border: none;
+    border-radius: 8px;
+    margin-top: 10px;
+    cursor: pointer;
+}
+button:hover {
+    background-color: #9b009b;
+}
+</style>
+</head>
+<body>
+
+<div class="card">
+    <h2>{{ p.name }}</h2>
+    <p>Age: {{ p.age }}</p>
+    <p>Blood Group: {{ p.blood_group }}</p>
+    <p>Allergies: {{ p.allergies }}</p>
+    <p>Medications: {{ p.medications }}</p>
+
+    <hr>
+    <h3>Emergency Alert</h3>
+    <p>Enter your phone number (optional) to send an alert to the patient’s emergency contacts.</p>
+
+    <input type="text" id="scanner_number" placeholder="Enter your phone number (optional)">
+    <br>
+    <button onclick="sendAlert()">Send Emergency Alert</button>
+
+    <p id="status" style="margin-top:10px; color:green;"></p>
+</div>
+
+<script>
+function sendAlert() {
+    const uuid = "{{ p.uuid }}";
+    const scannerNumber = document.getElementById("scanner_number").value;
+    document.getElementById("status").innerText = "Sending alert...";
+
+    if (navigator.geolocation) {
+        navigator.geolocation.getCurrentPosition(
+            (pos) => {
+                const data = {
+                    scanner_number: scannerNumber,
+                    latitude: pos.coords.latitude,
+                    longitude: pos.coords.longitude
+                };
+                fetch(`/report_location/${uuid}`, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify(data)
+                }).then(res => res.json()).then(() => {
+                    document.getElementById("status").innerText = "✅ Alert sent successfully!";
+                });
+            },
+            () => {
+                const data = {
+                    scanner_number: scannerNumber,
+                    location_denied: true
+                };
+                fetch(`/report_location/${uuid}`, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify(data)
+                }).then(res => res.json()).then(() => {
+                    document.getElementById("status").innerText = "✅ Alert sent (without location).";
+                });
+            }
+        );
+    } else {
+        const data = { scanner_number: scannerNumber, location_denied: true };
+        fetch(`/report_location/${uuid}`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify(data)
+        }).then(res => res.json()).then(() => {
+            document.getElementById("status").innerText = "✅ Alert sent (without location).";
+        });
+    }
+}
+</script>
+</body>
+</html>

@@ -1,0 +1,139 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Staff Dashboard - CareCode</title>
+    <style>
+        body { font-family: Arial, sans-serif; background-color: #f4f7f6; padding: 20px; }
+        .header { display: flex; justify-content: space-between; align-items: center; margin-bottom: 20px; }
+        .logout-btn { padding: 10px 20px; background-color: #e74c3c; color: white; border: none; border-radius: 5px; cursor: pointer; }
+        .logout-btn:hover { background-color: #c0392b; }
+        .card { background: white; padding: 25px; border-radius: 10px; box-shadow: 0 4px 8px rgba(0,0,0,0.1); margin-bottom: 20px; }
+        h1, h3 { color: #2c3e50; }
+        .search-form { display: flex; gap: 10px; margin-bottom: 20px; }
+        .search-form input { padding: 10px; border: 1px solid #ccc; border-radius: 5px; flex: 1; }
+        .search-form button { padding: 10px 15px; background-color: #3498db; color: white; border: none; border-radius: 5px; cursor: pointer; }
+        .search-form button:hover { background-color: #2980b9; }
+        .patient-list li { padding: 10px; border-bottom: 1px solid #eee; cursor: pointer; }
+        .patient-list li:hover { background-color: #f0f0f0; }
+        .patient-details-card { display: none; margin-top: 20px; border-left: 5px solid #3498db; padding-left: 20px; }
+        .report-link { color: #3498db; text-decoration: none; }
+        .report-link:hover { text-decoration: underline; }
+        .message { margin-top: 15px; font-weight: bold; }
+        .success { color: green; }
+        .error { color: red; }
+        .info-box { background-color: #eaf2f8; padding: 15px; border-left: 5px solid #3498db; border-radius: 5px; color: #2c3e50; margin-top: 20px; }
+    </style>
+</head>
+<body>
+    <div class="header">
+        <h1>Staff Dashboard</h1>
+        <button class="logout-btn" onclick="logout()">Logout</button>
+    </div>
+
+    <div class="card">
+        <h3>Search Patient</h3>
+        <form id="search-form" class="search-form">
+            <input type="text" id="search-name" placeholder="Search by Name">
+            <input type="email" id="search-email" placeholder="Search by Email">
+            <button type="submit">Search</button>
+        </form>
+        <div id="search-message" class="message"></div>
+        <ul id="patient-list" class="patient-list"></ul>
+    </div>
+
+    <div class="card patient-details-card" id="details-view">
+        <h3 id="patient-name-title">Patient Details</h3>
+        <div id="patient-info"></div>
+
+        <div class="info-box">
+            <p>📄 Staff members can <strong>view patient reports</strong> but cannot upload or modify them.</p>
+        </div>
+    </div>
+
+    <script>
+        let selectedPatientUUID = null;
+
+        async function logout() {
+            const response = await fetch('/auth/logout', { method: 'POST' });
+            const result = await response.json();
+            if (response.ok && result.redirect) {
+                window.location.href = result.redirect;
+            } else {
+                window.location.href = '/'; 
+            }
+        }
+
+        async function searchPatients(event) {
+            event.preventDefault();
+            const name = document.getElementById('search-name').value;
+            const email = document.getElementById('search-email').value;
+            const list = document.getElementById('patient-list');
+            const messageDiv = document.getElementById('search-message');
+            messageDiv.textContent = '';
+            list.innerHTML = '';
+            document.getElementById('details-view').style.display = 'none';
+
+            let query = '';
+            if (name) query += `name=${name}&`;
+            if (email) query += `email=${email}&`;
+            
+            if (!query) {
+                messageDiv.textContent = 'Please enter a name or email to search.';
+                messageDiv.className = 'message error';
+                return;
+            }
+
+            const response = await fetch(`/staff/search?${query.slice(0, -1)}`);
+            const result = await response.json();
+
+            if (response.ok) {
+                messageDiv.textContent = '';
+                result.patients.forEach(p => {
+                    const li = document.createElement('li');
+                    li.textContent = `${p.name} (UUID: ${p.uuid.substring(0, 8)}...)`;
+                    li.setAttribute('data-uuid', p.uuid);
+                    li.onclick = () => showPatientDetails(p);
+                    list.appendChild(li);
+                });
+            } else {
+                messageDiv.textContent = result.error || "Search failed.";
+                messageDiv.className = 'message error';
+            }
+        }
+
+        function showPatientDetails(patientData) {
+            selectedPatientUUID = patientData.uuid;
+            const infoDiv = document.getElementById('patient-info');
+            document.getElementById('patient-name-title').textContent = `Patient Details: ${patientData.name}`;
+
+            let contactsHtml = patientData.emergency_contacts.map(c => 
+                `<li>${c.name} (${c.relation}) - ${c.phone}</li>`).join('');
+            
+            let reportsHtml = patientData.reports.map(r => 
+                `<li>
+                    <a href="/${r.filename}" target="_blank" class="report-link">${r.description || r.filename.split('/').pop()}</a> 
+                    <small>(${new Date(r.uploaded_at).toLocaleDateString()})</small>
+                </li>`).join('');
+
+            infoDiv.innerHTML = `
+                <p><strong>UUID:</strong> ${patientData.uuid}</p>
+                <p><strong>Age:</strong> ${patientData.age}</p>
+                <p><strong>Blood Group:</strong> ${patientData.blood_group}</p>
+                <p><strong>Allergies:</strong> ${patientData.allergies || "None"}</p>
+                <p><strong>Medications:</strong> ${patientData.medications || "None"}</p>
+                
+                <h4>Emergency Contacts:</h4>
+                <ul>${contactsHtml || '<li>None</li>'}</ul>
+                
+                <h4>Medical Reports:</h4>
+                <ul>${reportsHtml || '<li>None</li>'}</ul>
+            `;
+            document.getElementById('details-view').style.display = 'block';
+        }
+
+        document.getElementById('search-form').addEventListener('submit', searchPatients);
+    </script>
+</body>
+</html>

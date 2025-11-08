@@ -1,0 +1,308 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>CareCode - Login/Register</title>
+    <style>
+    body {
+        font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+        background-color: #f0f2f5;
+        display: flex;
+        justify-content: center;
+        align-items: center;
+        min-height: 100vh;
+        margin: 0;
+        color: #343a40;
+    }
+    .container {
+        display: flex;
+        gap: 50px;
+        max-width: 800px;
+        width: 90%;
+    }
+    .form-card {
+        background: #ffffff;
+        padding: 40px;
+        border-radius: 10px;
+        box-shadow: 0 8px 20px rgba(0, 0, 0, 0.1);
+        border: 1px solid #e9ecef;
+        width: 100%;
+        transition: transform 0.3s ease;
+    }
+    h3 {
+        text-align: center;
+        color: #004d99;
+        font-size: 1.6em;
+        font-weight: 600;
+        border-bottom: 3px solid #004d99;
+        padding-bottom: 10px;
+        margin-bottom: 25px;
+    }
+    label {
+        display: block;
+        margin-bottom: 5px;
+        font-weight: 500;
+        color: #555;
+        font-size: 0.95em;
+    }
+    input[type="email"],
+    input[type="password"],
+    input[type="text"],
+    input[type="number"] {
+        width: 100%;
+        padding: 12px;
+        margin-bottom: 15px;
+        border: 1px solid #ced4da;
+        border-radius: 6px;
+        box-sizing: border-box;
+        transition: border-color 0.3s;
+    }
+    input:focus {
+        border-color: #007bff;
+        box-shadow: 0 0 5px rgba(0, 123, 255, 0.2);
+        outline: none;
+    }
+    .password-container {
+        position: relative;
+        margin-bottom: 15px;
+    }
+    .password-container input[type="password"],
+    .password-container input[type="text"] {
+        padding-right: 40px;
+        margin-bottom: 0;
+    }
+    .toggle-password {
+        position: absolute;
+        right: 15px;
+        top: 50%;
+        transform: translateY(-50%);
+        cursor: pointer;
+        color: #888;
+        font-size: 1.1em;
+        transition: color 0.2s;
+    }
+    .toggle-password:hover {
+        color: #007bff;
+    }
+    button {
+        width: 100%;
+        padding: 12px;
+        background-color: #ff6347;
+        color: white;
+        border: none;
+        border-radius: 6px;
+        cursor: pointer;
+        font-size: 1.1em;
+        font-weight: 600;
+        margin-top: 20px;
+        transition: background-color 0.3s, transform 0.1s;
+    }
+    button:hover {
+        background-color: #e55338;
+        transform: translateY(-1px);
+    }
+    .message {
+        margin-top: 15px;
+        text-align: center;
+        font-weight: 600;
+        padding: 10px;
+        border-radius: 5px;
+    }
+    .success {
+        color: #155724;
+        background-color: #d4edda;
+        border: 1px solid #c3e6cb;
+    }
+    .error {
+        color: #721c24;
+        background-color: #f8d7da;
+        border: 1px solid #f5c6cb;
+    }
+    .switch-mode {
+        text-align: center;
+        margin-top: 15px;
+        font-size: 0.9em;
+        cursor: pointer;
+        color: #008080;
+        text-decoration: underline;
+        transition: color 0.2s;
+    }
+    .switch-mode:hover {
+        color: #004d4d;
+    }
+    @media (max-width: 768px) {
+        .container { flex-direction: column; gap: 25px; }
+        .form-card { width: 100%; padding: 30px; }
+    }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <!-- 🩺 PATIENT CARD -->
+        <div class="form-card" id="patient-card">
+            <h3>Patient Portal</h3>
+            <form id="patient-form">
+                <label for="p_email">Email:</label>
+                <input type="email" id="p_email" required>
+
+                <label for="p_password">Password:</label>
+                <div class="password-container">
+                    <input type="password" id="p_password" required>
+                    <span class="toggle-password" onclick="togglePasswordVisibility('p_password', this)">👁️</span>
+                </div>
+
+                <div id="p_register_fields" style="display:none;">
+                    <label for="p_name">Name (Initial):</label>
+                    <input type="text" id="p_name">
+                    <label for="p_age">Age (Initial):</label>
+                    <input type="number" id="p_age">
+                    <label for="p_blood_group">Blood Group (Initial):</label>
+                    <input type="text" id="p_blood_group">
+                </div>
+
+                <button type="submit" data-mode="login">Patient Login</button>
+                <div class="switch-mode" onclick="toggleMode('patient')">New Patient? Register Here.</div>
+                <div class="switch-mode" style="color:#d9534f;" onclick="forgotPassword()">Forgot Password?</div>
+            </form>
+            <div id="p_message" class="message"></div>
+        </div>
+
+        <!-- 🏥 STAFF CARD -->
+        <div class="form-card" id="staff-card">
+            <h3>Hospital Staff Portal</h3>
+            <form id="staff-form">
+                <label for="s_email">Email:</label>
+                <input type="email" id="s_email" required>
+
+                <label for="s_password">Password:</label>
+                <div class="password-container">
+                    <input type="password" id="s_password" required>
+                    <span class="toggle-password" onclick="togglePasswordVisibility('s_password', this)">👁️</span>
+                </div>
+
+                <!-- NEW FIELD: Shown only during staff registration -->
+                <div id="s_register_fields" style="display:none;">
+                    <label for="s_hospital_code">Hospital Code:</label>
+                    <input type="text" id="s_hospital_code" placeholder="Enter Hospital Code (e.g. APOLLO123)">
+                </div>
+
+                <button type="submit" data-mode="login">Staff Login</button>
+                <div class="switch-mode" onclick="toggleMode('staff')">New Staff? Register Here.</div>
+                <div class="switch-mode" style="color:#d9534f;" onclick="forgotPassword()">Forgot Password?</div>
+            </form>
+            <div id="s_message" class="message"></div>
+        </div>
+    </div>
+
+    <script>
+        const displayMessage = (id, message, isError = false) => {
+            const el = document.getElementById(id);
+            el.textContent = message;
+            el.className = isError ? 'message error' : 'message success';
+        };
+
+        function toggleMode(type) {
+            const form = document.getElementById(`${type}-form`);
+            const mode = form.querySelector('button').getAttribute('data-mode');
+            const newMode = mode === 'login' ? 'register' : 'login';
+            const prefix = type.charAt(0);
+            const registerFields = document.getElementById(`${prefix}_register_fields`);
+            const buttonText = newMode === 'login' ? 'Login' : 'Register';
+            const linkText = newMode === 'login'
+                ? `New ${type.charAt(0).toUpperCase() + type.slice(1)}? Register Here.`
+                : `Already have an account? Login Here.`;
+
+            form.querySelector('button').textContent =
+                `${type.charAt(0).toUpperCase() + type.slice(1)} ${buttonText}`;
+            form.querySelector('button').setAttribute('data-mode', newMode);
+            registerFields.style.display = newMode === 'register' ? 'block' : 'none';
+            document.querySelector(`#${type}-card .switch-mode`).textContent = linkText;
+            document.getElementById(`${prefix}_message`).textContent = '';
+        }
+
+        async function handleSubmit(event, type) {
+            event.preventDefault();
+            const form = event.target;
+            const mode = form.querySelector('button').getAttribute('data-mode');
+            const prefix = type.charAt(0);
+            const email = document.getElementById(`${prefix}_email`).value;
+            const password = document.getElementById(`${prefix}_password`).value;
+            const messageDiv = document.getElementById(`${prefix}_message`);
+            
+            let url = `/auth/${mode}`;
+            let data = { email, password, role: type };
+
+            if (mode === 'register' && type === 'patient') {
+                data.name = document.getElementById('p_name').value;
+                data.age = document.getElementById('p_age').value;
+                data.blood_group = document.getElementById('p_blood_group').value || 'Unknown';
+            }
+            if (mode === 'register' && type === 'staff') {
+                data.hospital_code = document.getElementById('s_hospital_code').value;
+            }
+
+            try {
+                const response = await fetch(url, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify(data)
+                });
+                const result = await response.json();
+
+                if (response.ok) {
+                    displayMessage(`${prefix}_message`, result.message || 'Success!');
+                    if (mode === 'login' && result.redirect) {
+                        window.location.href = result.redirect;
+                    } else if (mode === 'register') {
+                        toggleMode(type);
+                        displayMessage(`${prefix}_message`, "Registration successful. Please login now.");
+                    }
+                } else {
+                    displayMessage(`${prefix}_message`, result.error || "An error occurred.", true);
+                }
+            } catch (error) {
+                displayMessage(`${prefix}_message`, "Network error or server unreachable.", true);
+            }
+        }
+
+        function togglePasswordVisibility(fieldId, iconElement) {
+            const passwordField = document.getElementById(fieldId);
+            if (passwordField.type === "password") {
+                passwordField.type = "text";
+                iconElement.textContent = "🔒";
+            } else {
+                passwordField.type = "password";
+                iconElement.textContent = "👁️";
+            }
+        }
+
+        // 🆕 FORGOT PASSWORD
+        async function forgotPassword() {
+            const email = prompt("Enter your registered email to reset your password:");
+            if (!email) return;
+
+            try {
+                const response = await fetch("/auth/forgot_password", {
+                    method: "POST",
+                    headers: { "Content-Type": "application/json" },
+                    body: JSON.stringify({ email })
+                });
+                const result = await response.json();
+
+                if (response.ok) {
+                    alert("✅ Reset link sent! Check your email or console.");
+                    console.log("🔗 Reset link:", result.reset_link);
+                } else {
+                    alert("❌ " + (result.error || "Error sending reset link."));
+                }
+            } catch (err) {
+                alert("Network error or server unavailable.");
+            }
+        }
+
+        document.getElementById('patient-form').addEventListener('submit', (e) => handleSubmit(e, 'patient'));
+        document.getElementById('staff-form').addEventListener('submit', (e) => handleSubmit(e, 'staff'));
+    </script>
+</body>
+</html>
