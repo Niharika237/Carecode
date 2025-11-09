@@ -752,7 +752,6 @@ def public_patient(uuid):
 
 
 from datetime import datetime, timezone, timedelta
-
 @app.route("/report_location/<string:uuid>", methods=["POST"])
 def report_location(uuid):
     p = Patient.query.filter_by(uuid=uuid).first()
@@ -769,17 +768,19 @@ def report_location(uuid):
     scanner_number = (data.get("scanner_number") or "").strip()
 
     # ✅ Clean, emoji-formatted message
-          alert_msg = f"🚨 {p.name} alert!\n🕒 {scan_time}\n"
+    alert_msg = f"🚨 {p.name} alert!\n🕒 {scan_time}\n"
 
-if lat and lon:
-    alert_msg += f"📍 https://maps.google.com/?q={lat},{lon}\n"
-else:
-    alert_msg += "📍 Location not shared\n"
+    if lat and lon:
+        alert_msg += f"📍 https://maps.google.com/?q={lat},{lon}\n"
+    else:
+        alert_msg += "📍 Location not shared\n"
 
-if scanner_number:
-    alert_msg += f"📞 {scanner_number}\n"
+    if scanner_number:
+        alert_msg += f"📞 {scanner_number}\n"
 
-alert_msg += "Call scanner for help."
+    alert_msg += "Call scanner for help."
+
+
 
 
 
