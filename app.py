@@ -769,20 +769,18 @@ def report_location(uuid):
     scanner_number = (data.get("scanner_number") or "").strip()
 
     # ✅ Clean, emoji-formatted message
-        alert_msg = (
-    f"[ALERT] {p.name}\n"
-    f"Time: {scan_time}\n"
-)
-
-if scanner_number:
-    alert_msg += f"Scanner: {scanner_number}\n"
+          alert_msg = f"🚨 {p.name} alert!\n🕒 {scan_time}\n"
 
 if lat and lon:
-    alert_msg += f"Loc: https://maps.google.com/?q={lat},{lon}\n"
+    alert_msg += f"📍 https://maps.google.com/?q={lat},{lon}\n"
 else:
-    alert_msg += "Loc not shared\n"
+    alert_msg += "📍 Location not shared\n"
 
-alert_msg += "Please call scanner."
+if scanner_number:
+    alert_msg += f"📞 {scanner_number}\n"
+
+alert_msg += "Call scanner for help."
+
 
 
     # ✅ Send SMS to all emergency contacts (include scanner’s number)
