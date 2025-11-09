@@ -769,21 +769,21 @@ def report_location(uuid):
     scanner_number = (data.get("scanner_number") or "").strip()
 
     # ✅ Clean, emoji-formatted message
-    alert_msg = (
-        f"🚨 Alert from CareCode\n"
-        f"👤 Patient: {p.name}\n"
-        f"🕒 Time: {scan_time}\n"
-    )
+        alert_msg = (
+    f"[ALERT] {p.name}\n"
+    f"Time: {scan_time}\n"
+)
 
-    if scanner_number:
-        alert_msg += f"📞 Scanner: {scanner_number}\n"
+if scanner_number:
+    alert_msg += f"Scanner: {scanner_number}\n"
 
-    if lat and lon:
-        alert_msg += f"📍 Location: https://maps.google.com/?q={lat},{lon}\n"
-    else:
-        alert_msg += "📍 Location not shared\n"
+if lat and lon:
+    alert_msg += f"Loc: https://maps.google.com/?q={lat},{lon}\n"
+else:
+    alert_msg += "Loc not shared\n"
 
-    alert_msg += "📲 Call the scanner for more details."
+alert_msg += "Please call scanner."
+
 
     # ✅ Send SMS to all emergency contacts (include scanner’s number)
     contacts = EmergencyContact.query.filter_by(patient_uuid=p.uuid).all()
