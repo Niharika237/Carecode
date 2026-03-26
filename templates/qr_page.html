@@ -44,10 +44,42 @@ button:hover {
 
 <div class="card">
     <h2>{{ p.name }}</h2>
+    {% if p.photo %}
+<img src="/{{ p.photo }}"
+     alt="Patient Photo"
+     style="width:140px;height:140px;object-fit:cover;border-radius:10px;margin:10px auto;display:block;">
+{% endif %}
+
     <p>Age: {{ p.age }}</p>
     <p>Blood Group: {{ p.blood_group }}</p>
+    <p><strong>Phone:</strong>
+{% if p.phone and p.phone_verified %}
+    {{ p.phone }}
+{% else %}
+    Not verified
+{% endif %}
+</p>
+
     <p>Allergies: {{ p.allergies }}</p>
     <p>Medications: {{ p.medications }}</p>
+    <hr>
+
+<h3>Emergency Contacts</h3>
+
+<ul style="text-align:left; max-width:300px; margin:auto;">
+{% if contacts %}
+    {% for c in contacts %}
+        <li>
+            <strong>{{ c.name }}</strong>
+            ({{ c.relation }}) -
+            <a href="tel:{{ c.phone }}">{{ c.phone }}</a>
+        </li>
+    {% endfor %}
+{% else %}
+    <li>No emergency contacts available</li>
+{% endif %}
+</ul>
+
 
     <hr>
     <h3>Emergency Alert</h3>
@@ -58,6 +90,10 @@ button:hover {
     <button onclick="sendAlert()">Send Emergency Alert</button>
 
     <p id="status" style="margin-top:10px; color:green;"></p>
+
+    <button onclick="loadHospitals()">Show Nearby Hospitals</button>
+
+<div id="hospitals"></div>
 </div>
 
 <script>
@@ -107,6 +143,59 @@ function sendAlert() {
         });
     }
 }
+
+
+
+
+function loadHospitals() {
+
+    navigator.geolocation.getCurrentPosition(
+        (pos) => {
+            // ✅ SUCCESS
+            const lat = pos.coords.latitude;
+            const lon = pos.coords.longitude;
+
+            fetch(`/ai/hospitals?lat=${lat}&lon=${lon}`)
+                .then(res => res.json())
+                .then(data => displayHospitals(data));
+
+        },
+        (error) => {
+            // ❌ ERROR (this is your case)
+            alert("Location blocked or not working. Showing default location.");
+
+            // 👉 fallback location (Hyderabad)
+            const lat = 17.3850;
+            const lon = 78.4867;
+
+            fetch(`/ai/hospitals?lat=${lat}&lon=${lon}`)
+                .then(res => res.json())
+                .then(data => displayHospitals(data));
+        }
+    );
+}
+
+function displayHospitals(data) {
+    const div = document.getElementById("hospitals");
+
+    if (!data.length) {
+        div.innerHTML = "No hospitals found";
+        return;
+    }
+
+    div.innerHTML = data.map(h => `
+        <p>
+            <b>${h.name}</b><br>
+            Distance: ${h.distance} km<br>
+            <a href="https://www.google.com/maps?q=${h.lat},${h.lon}" target="_blank">
+                📍 Open in Maps
+            </a>
+        </p>
+        <hr>
+    `).join("");
+}
+
+
 </script>
 </body>
 </html>

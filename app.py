@@ -18,6 +18,8 @@ from models import User, Patient, EmergencyContact, Report, Hospital
 from itsdangerous import URLSafeTimedSerializer, SignatureExpired, BadSignature
 import sendgrid
 from sendgrid.helpers.mail import Mail
+from flask import Flask, request, jsonify
+from ai_hospital import get_nearby_hospitals
 
 
 
@@ -69,8 +71,14 @@ def validate_phone_number(phone_string):
     Returns (is_valid: bool, standardized_phone: str or error_message: str)
     """
     try:
+        if not client:
+           return False, "Validation service unavailable"
         # CORRECTED LINE: Removed invalid 'fields' parameter for v2 Lookup API fetch call.
+
+
+    
         lookup = client.lookups.v2.phone_numbers(phone_string).fetch()
+
 
         # Check if Twilio returned a valid E.164 format
         if lookup.phone_number:
@@ -111,6 +119,8 @@ def patient_public_dict(p):
         "blood_group": p.blood_group,
         "allergies": p.allergies,
         "medications": p.medications,
+        "phone": p.phone,          # ✅ ADD THIS
+        "photo": p.photo, 
         "emergency_contacts": [contact_dict(c) for c in contacts]
     }
 
@@ -122,12 +132,21 @@ def patient_staff_dict(p):
 
 # ---------------- Twilio SMS Sender ----------------
 TWILIO_SID = os.getenv("TWILIO_SID")
-TWILIO_AUTH = os.getenv("TWILIO_AUTH_TOKEN")
+TWILIO_AUTH = os.getenv("TWILIO_AUTH")
 TWILIO_PHONE = os.getenv("TWILIO_PHONE")
 # your Twilio trial number (still used as from_)
-client = Client(TWILIO_SID, TWILIO_AUTH)
+
+if TWILIO_SID and TWILIO_AUTH:
+    client = Client(TWILIO_SID, TWILIO_AUTH)
+else:
+    client = None
+
 
 def send_sms(to_number, message):
+    if not client:
+        print("Twilio not configured")
+        return
+
     try:
         msg = client.messages.create(
             body=message,
@@ -137,6 +156,29 @@ def send_sms(to_number, message):
         print(f"✅ SMS sent to {to_number}, SID={msg.sid}")
     except Exception as e:
         print(f"❌ SMS failed: {e}")
+
+
+def make_call(to_number, patient_name):
+    if not client:
+        print("Twilio not configured")
+        return
+
+    try:
+        call = client.calls.create(
+            twiml=f"""
+                <Response>
+                    <Say voice="alice">
+                        Emergency alert for {patient_name}.
+                        Please check your phone immediately.
+                    </Say>
+                </Response>
+            """,
+            to=to_number,
+            from_=TWILIO_PHONE
+        )
+        print(f"📞 Calling {to_number}")
+    except Exception as e:
+        print(f"❌ Call failed: {e}")
 
 # ---------------- Routes ----------------
 
@@ -209,7 +251,7 @@ def forgot_password():
 
     # Generate password reset token (valid for 10 minutes)
     token = serializer.dumps(email, salt="password-reset-salt")
-    reset_link = f"http://127.0.0.1:5000/auth/reset_password/{token}"
+    reset_link = f"{request.host_url}auth/reset_password/{token}"
 
     # Send email using SendGrid
     try:
@@ -220,6 +262,7 @@ def forgot_password():
         subject = "Password Reset - CareCode"
         content = f"""
         <p>Hello,</p>
+        
         <p>You requested to reset your password for CareCode.</p>
         <p>Click below to reset your password (valid for 10 minutes):</p>
         <p><a href="{reset_link}">{reset_link}</a></p>
@@ -553,12 +596,17 @@ def staff_search():
 
     name = request.args.get("name")
     email = request.args.get("email")
+    phone = request.args.get("phone")
+
 
     query = Patient.query
     if name:
         query = query.filter(Patient.name.ilike(f"%{name}%"))
     if email:
         query = query.join(User).filter(User.email.ilike(f"%{email}%"))
+    if phone:
+        query = query.filter(Patient.phone.like(f"%{phone}%"))
+
 
     results = query.all()
     if not results:
@@ -567,6 +615,22 @@ def staff_search():
     return {"patients": [patient_staff_dict(p) for p in results]}
 
 # ---------- PUBLIC ----------
+@app.route("/qr/<string:uuid>")
+def qr_page(uuid):
+    p = Patient.query.filter_by(uuid=uuid).first()
+    if not p:
+        return {"error": "patient not found"}, 404
+
+    contacts = EmergencyContact.query.filter_by(
+        patient_uuid=p.uuid
+    ).all()
+
+    return render_template(
+        "qr_page.html",
+        p=p,
+        contacts=contacts
+    )
+
 # ✅ Prevent duplicate alerts within 2 hours
 last_alert_time = {}
 # app.py - Corrected /patient/<string:uuid> route
@@ -653,6 +717,7 @@ def public_patient(uuid):
             <h2>👤 {p.name}</h2>
             <p><strong>Age:</strong> {p.age}</p>
             <p><strong>Blood Group:</strong> {p.blood_group}</p>
+            <p><strong>Phone:</strong> {p.phone if p.phone_verified else "Not verified"}</p>
             <p><strong>Allergies:</strong> {p.allergies or "None"}</p>
             <p><strong>Medications:</strong> {p.medications or "None"}</p>
             <h3>Emergency Contacts:</h3>
@@ -791,6 +856,7 @@ def report_location(uuid):
     else:
         for c in contacts:
             send_sms(c.phone, alert_msg)
+            make_call(c.phone, p.name)
 
     print(f"✅ Alert sent for {p.name} at {scan_time}")
     return {"status": "ok", "message": "Alert sent successfully"}
@@ -802,15 +868,17 @@ def generate_qr(uuid):
     if not p:
         return {"error": "not found"}, 404
 
-    # ✅ Use your Render domain instead of local IP
-    base_url = "https://carecode-1.onrender.com"
-    url = f"{base_url}/patient/{uuid}"
+    # ✅ Correct QR target
+    base_url = request.host_url.rstrip("/")
+
+    url = f"{base_url}/qr/{uuid}"                                
 
     out = os.path.join(QRC_DIR, f"{uuid}.png")
     qrcode.make(url).save(out)
 
     rel = os.path.join("static", "qrcodes", f"{uuid}.png").replace("\\", "/")
     return {"qr": rel, "opens": url}
+
 
 
 ## NEW FEATURE: Download QR Code Image
@@ -830,6 +898,107 @@ def download_qr(uuid):
         
     return send_file(file_path, as_attachment=True, download_name=f"carecode_qr_{uuid}.png")
 # ---------------- FORGOT PASSWORD ----------------
+PHOTO_DIR = os.path.join(BASE_STATIC, "patient_photos")
+os.makedirs(PHOTO_DIR, exist_ok=True)
+
+@app.route("/me/phone/send_otp", methods=["POST"])
+@login_required
+def send_patient_phone_otp():
+    if current_user.role != "patient":
+        return {"error": "only patients allowed"}, 403
+
+    data = request.get_json() or {}
+    phone = data.get("phone")
+    if not phone:
+        return {"error": "phone required"}, 400
+
+    # one phone = one account
+    if Patient.query.filter(
+        Patient.phone == phone,
+        Patient.id != current_user.patient.id
+    ).first():
+        return {"error": "Phone already registered"}, 400
+
+    ok, standardized = validate_phone_number(phone)
+    if not ok:
+        return {"error": standardized}, 400
+
+    client.verify.v2.services(TWILIO_VERIFY_SID).verifications.create(
+        to=standardized,
+        channel="sms"
+    )
+
+    p = current_user.patient
+    p.phone = standardized
+    p.phone_verified = False
+    db.session.commit()
+
+    return {"message": "OTP sent"}
+
+@app.route("/me/phone/verify_otp", methods=["POST"])
+@login_required
+def verify_patient_phone_otp():
+    if current_user.role != "patient":
+        return {"error": "only patients allowed"}, 403
+
+    data = request.get_json() or {}
+    otp = data.get("otp")
+    p = current_user.patient
+
+    if not otp or not p.phone:
+        return {"error": "OTP required"}, 400
+
+    check = client.verify.v2.services(TWILIO_VERIFY_SID).verification_checks.create(
+        to=p.phone,
+        code=otp
+    )
+
+    if check.status == "approved":
+        p.phone_verified = True
+        db.session.commit()
+        return {"message": "Phone verified"}
+
+    return {"error": "Invalid OTP"}, 400
+
+@app.route("/me/upload_photo", methods=["POST"])
+@login_required
+def upload_photo():
+    if current_user.role != "patient":
+        return {"error": "only patients allowed"}, 403
+
+    if "photo" not in request.files:
+        return {"error": "No file uploaded"}, 400
+
+    file = request.files["photo"]
+
+    if file.filename == "":
+        return {"error": "No selected file"}, 400
+
+    filename = secure_filename(file.filename)
+
+    # Save file
+    file_path = os.path.join(PHOTO_DIR, filename)
+    file.save(file_path)
+
+    # Save filename in DB
+    p = current_user.patient
+    p.photo = filename
+    db.session.commit()
+
+    return {"message": "Photo uploaded successfully", "filename": filename}
+
+@app.route("/ai/hospitals")
+def ai_hospitals():
+    lat = request.args.get("lat")
+    lon = request.args.get("lon")
+
+    if not lat or not lon:
+        return {"error": "Location required"}, 400
+
+    hospitals = get_nearby_hospitals(lat, lon)
+
+    return jsonify(hospitals)
+
 
 
 
@@ -857,8 +1026,24 @@ def staff_dashboard():
     # NOTE: Using your file name 'staff.html'
     return render_template("staff.html")
 
+    # ==================================================
+# 🚀 QUICK ADD: PATIENT PHONE + PHOTO FEATURES
+# ==================================================
+
+
+
+
+
+# ==================================================
+# STEP 5: PATIENT PHONE OTP VERIFICATION
+# ==================================================
+
+# Ensure photo folder exists (used in step 6 also)
+
+
+
 # ---------------- Init ----------------
 if __name__ == "__main__":  # fixed
     with app.app_context():
         db.create_all()
-    app.run(host="0.0.0.0", port=5000, debug=True)
+    app.run(host="0.0.0.0", port=5000, debug=False)

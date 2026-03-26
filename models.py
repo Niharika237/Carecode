@@ -48,6 +48,11 @@ class Patient(db.Model):
     allergies = db.Column(db.String(200), nullable=True)
     medications = db.Column(db.String(200), nullable=True)
 
+    # 🔽 NEW ADDITIONS (NO EXISTING CODE TOUCHED)
+    phone = db.Column(db.String(20), unique=True, nullable=True)   # one phone = one account
+    phone_verified = db.Column(db.Boolean, default=False)          # OTP verification status
+    photo = db.Column(db.String(255), nullable=True)               # patient photo path
+
     # relationships
     emergency_contacts = db.relationship("EmergencyContact", backref="patient", lazy=True)
     reports = db.relationship("Report", backref="patient", lazy=True)

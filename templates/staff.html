@@ -35,10 +35,12 @@
     <div class="card">
         <h3>Search Patient</h3>
         <form id="search-form" class="search-form">
-            <input type="text" id="search-name" placeholder="Search by Name">
-            <input type="email" id="search-email" placeholder="Search by Email">
-            <button type="submit">Search</button>
-        </form>
+    <input type="text" id="search-name" placeholder="Search by Name">
+    <input type="email" id="search-email" placeholder="Search by Email">
+    <input type="text" id="search-phone" placeholder="Search by Phone (+91...)">
+    <button type="submit">Search</button>
+</form>
+
         <div id="search-message" class="message"></div>
         <ul id="patient-list" class="patient-list"></ul>
     </div>
@@ -69,6 +71,8 @@
             event.preventDefault();
             const name = document.getElementById('search-name').value;
             const email = document.getElementById('search-email').value;
+            const phone = document.getElementById('search-phone').value;
+
             const list = document.getElementById('patient-list');
             const messageDiv = document.getElementById('search-message');
             messageDiv.textContent = '';
@@ -78,6 +82,7 @@
             let query = '';
             if (name) query += `name=${name}&`;
             if (email) query += `email=${email}&`;
+            if (phone) query += `phone=${phone}&`;
             
             if (!query) {
                 messageDiv.textContent = 'Please enter a name or email to search.';
@@ -118,6 +123,16 @@
                 </li>`).join('');
 
             infoDiv.innerHTML = `
+            <p><strong>UUID:</strong> ${patientData.uuid}</p>
+
+    <p><strong>Phone:</strong> ${patientData.phone || "Not available"}</p>
+
+    <p><strong>Photo:</strong></p>
+    ${
+        patientData.photo
+        ? `<img src="/static/patient_photos/${patientData.photo}" width="120">`
+        : "No photo"
+    }
                 <p><strong>UUID:</strong> ${patientData.uuid}</p>
                 <p><strong>Age:</strong> ${patientData.age}</p>
                 <p><strong>Blood Group:</strong> ${patientData.blood_group}</p>
