@@ -44,11 +44,12 @@ button:hover {
 
 <div class="card">
     <h2>{{ p.name }}</h2>
+
     {% if p.photo %}
-<img src="/{{ p.photo }}"
-     alt="Patient Photo"
-     style="width:140px;height:140px;object-fit:cover;border-radius:10px;margin:10px auto;display:block;">
-{% endif %}
+    <img src="{{ url_for('static', filename=p.photo) }}"
+         alt="Patient Photo"
+         style="width:140px;height:140px;object-fit:cover;border-radius:10px;margin:10px auto;display:block;">
+    {% endif %}
 
     <p>Age: {{ p.age }}</p>
     <p>Blood Group: {{ p.blood_group }}</p>
