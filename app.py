@@ -871,7 +871,7 @@ def generate_qr(uuid):
     # ✅ Correct QR target
     base_url = request.host_url.rstrip("/")
 
-    url = f"{base_url}/qr/{uuid}"                                
+    url = f"{base_url}/patient/{uuid}"                                
 
     out = os.path.join(QRC_DIR, f"{uuid}.png")
     qrcode.make(url).save(out)
