@@ -3,98 +3,140 @@
 <head>
 <meta charset="UTF-8">
 <title>Carecode - Emergency Details</title>
+
 <style>
 body {
-    font-family: 'Inter', sans-serif;
-    background-color: #f4f6f9;
-    color: #333;
-    padding: 30px;
+    font-family: 'Segoe UI', sans-serif;
+    background: linear-gradient(to right, #eef2f3, #dfe9f3);
+    margin: 0;
+    padding: 20px;
     text-align: center;
 }
+
 .card {
     background: white;
-    padding: 25px;
-    border-radius: 10px;
-    box-shadow: 0 4px 12px rgba(0,0,0,0.08);
-    display: inline-block;
+    padding: 30px;
+    border-radius: 16px;
+    box-shadow: 0 8px 20px rgba(0,0,0,0.1);
     max-width: 500px;
+    margin: auto;
 }
-input {
-    padding: 10px;
-    width: 80%;
-    border: 1px solid #ccc;
-    border-radius: 6px;
-    margin-top: 10px;
+
+h1 {
+    color: #2c3e50;
+    font-size: 28px;
+    margin-bottom: 5px;
 }
+
+h2 {
+    color: #6c5ce7;
+    font-size: 24px;
+    margin: 10px 0;
+}
+
+p {
+    font-size: 16px;
+    margin: 6px 0;
+}
+
+.info-box {
+    background: #f8f9ff;
+    padding: 15px;
+    border-radius: 10px;
+    margin-top: 15px;
+    text-align: left;
+}
+
+ul {
+    text-align: left;
+    padding-left: 20px;
+}
+
 button {
-    padding: 10px 20px;
-    background-color: #800080;
+    padding: 12px 18px;
+    background: linear-gradient(45deg, #6c5ce7, #a29bfe);
     color: white;
     border: none;
-    border-radius: 8px;
-    margin-top: 10px;
+    border-radius: 10px;
+    margin-top: 12px;
     cursor: pointer;
+    font-size: 15px;
+    transition: 0.2s;
 }
+
 button:hover {
-    background-color: #9b009b;
+    transform: scale(1.05);
+}
+
+input {
+    padding: 10px;
+    width: 85%;
+    border-radius: 8px;
+    border: 1px solid #ccc;
+    margin-top: 10px;
+}
+
+hr {
+    margin: 20px 0;
 }
 </style>
+
 </head>
 <body>
 
 <div class="card">
+
+    <h1>🚑 Emergency Medical Info</h1>
     <h2>{{ p.name }}</h2>
 
-    {% if p.photo %}
-    <img src="{{ url_for('static', filename=p.photo) }}"
-         alt="Patient Photo"
-         style="width:140px;height:140px;object-fit:cover;border-radius:10px;margin:10px auto;display:block;">
+    <div class="info-box">
+        <p><strong>Age:</strong> {{ p.age }}</p>
+        <p><strong>Blood Group:</strong> {{ p.blood_group }}</p>
+        <p><strong>Phone:</strong>
+        {% if p.phone and p.phone_verified %}
+            {{ p.phone }}
+        {% else %}
+            Not verified
+        {% endif %}
+        </p>
+        <p><strong>Allergies:</strong> {{ p.allergies }}</p>
+        <p><strong>Medications:</strong> {{ p.medications }}</p>
+    </div>
+
+    <hr>
+
+    <h3>Emergency Contacts</h3>
+
+    <ul style="max-width:300px; margin:auto;">
+    {% if contacts %}
+        {% for c in contacts %}
+            <li>
+                <strong>{{ c.name }}</strong>
+                ({{ c.relation }}) -
+                <a href="tel:{{ c.phone }}">{{ c.phone }}</a>
+            </li>
+        {% endfor %}
+    {% else %}
+        <li>No emergency contacts available</li>
     {% endif %}
-
-    <p>Age: {{ p.age }}</p>
-    <p>Blood Group: {{ p.blood_group }}</p>
-    <p><strong>Phone:</strong>
-{% if p.phone and p.phone_verified %}
-    {{ p.phone }}
-{% else %}
-    Not verified
-{% endif %}
-</p>
-
-    <p>Allergies: {{ p.allergies }}</p>
-    <p>Medications: {{ p.medications }}</p>
-    <hr>
-
-<h3>Emergency Contacts</h3>
-
-<ul style="text-align:left; max-width:300px; margin:auto;">
-{% if contacts %}
-    {% for c in contacts %}
-        <li>
-            <strong>{{ c.name }}</strong>
-            ({{ c.relation }}) -
-            <a href="tel:{{ c.phone }}">{{ c.phone }}</a>
-        </li>
-    {% endfor %}
-{% else %}
-    <li>No emergency contacts available</li>
-{% endif %}
-</ul>
-
+    </ul>
 
     <hr>
+
     <h3>Emergency Alert</h3>
-    <p>Enter your phone number (optional) to send an alert to the patient’s emergency contacts.</p>
+    <p>Enter your phone number (optional) to send an alert</p>
 
-    <input type="text" id="scanner_number" placeholder="Enter your phone number (optional)">
+    <input type="text" id="scanner_number" placeholder="Enter your phone number">
     <br>
-    <button onclick="sendAlert()">Send Emergency Alert</button>
+
+    <button onclick="sendAlert()">🚨 Send Emergency Alert</button>
 
     <p id="status" style="margin-top:10px; color:green;"></p>
 
-    <button onclick="loadHospitals()">Show Nearby Hospitals</button>
+    <button onclick="loadHospitals()">🏥 Show Nearby Hospitals</button>
 
-<div id="hospitals"></div>
+    <div id="hospitals"></div>
+
 </div>
 
 <script>
@@ -129,43 +171,35 @@ function sendAlert() {
                     headers: { 'Content-Type': 'application/json' },
                     body: JSON.stringify(data)
                 }).then(res => res.json()).then(() => {
-                    document.getElementById("status").innerText = "✅ Alert sent (without location).";
+                    document.getElementById("status").innerText = "✅ Alert sent (without location)";
                 });
             }
         );
     } else {
-        const data = { scanner_number: scannerNumber, location_denied: true };
+        const data = { scanner_number: scannerNumber };
         fetch(`/report_location/${uuid}`, {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify(data)
         }).then(res => res.json()).then(() => {
-            document.getElementById("status").innerText = "✅ Alert sent (without location).";
+            document.getElementById("status").innerText = "✅ Alert sent";
         });
     }
 }
 
-
-
-
 function loadHospitals() {
-
     navigator.geolocation.getCurrentPosition(
         (pos) => {
-            // ✅ SUCCESS
             const lat = pos.coords.latitude;
             const lon = pos.coords.longitude;
 
             fetch(`/ai/hospitals?lat=${lat}&lon=${lon}`)
                 .then(res => res.json())
                 .then(data => displayHospitals(data));
-
         },
-        (error) => {
-            // ❌ ERROR (this is your case)
-            alert("Location blocked or not working. Showing default location.");
+        () => {
+            alert("Location blocked. Showing default location.");
 
-            // 👉 fallback location (Hyderabad)
             const lat = 17.3850;
             const lon = 78.4867;
 
@@ -185,18 +219,16 @@ function displayHospitals(data) {
     }
 
     div.innerHTML = data.map(h => `
-        <p>
+        <div style="background:#fff;padding:10px;margin:10px;border-radius:10px;box-shadow:0 2px 6px rgba(0,0,0,0.1)">
             <b>${h.name}</b><br>
             Distance: ${h.distance} km<br>
             <a href="https://www.google.com/maps?q=${h.lat},${h.lon}" target="_blank">
                 📍 Open in Maps
             </a>
-        </p>
-        <hr>
+        </div>
     `).join("");
 }
-
-
 </script>
+
 </body>
 </html>
