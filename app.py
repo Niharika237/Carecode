@@ -982,7 +982,7 @@ def upload_photo():
 
     # Save filename in DB
     p = current_user.patient
-    p.photo = filename
+    p.photo = f"patient_photos/{filename}"
     db.session.commit()
 
     return {"message": "Photo uploaded successfully", "filename": filename}
